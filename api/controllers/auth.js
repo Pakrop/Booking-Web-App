@@ -1,0 +1,50 @@
+import User from "../models/User.js";
+//bcrypt คือตัวเข้ารหัสข้อมูล
+import bcrypt from "bcryptjs";
+import { createError } from "../utils/error.js";
+import jwt from "jsonwebtoken";
+
+export const register = async (req, res, next) => {
+  try {
+    //นำข้อมูล password มาเข้ารหัส
+    const salt = bcrypt.genSaltSync(10);
+    const hash = bcrypt.hashSync(req.body.password, salt);
+
+    //เรียกใช้ schema
+    const newUser = new User({
+      username: req.body.username,
+      email: req.body.email,
+      password: hash,
+    });
+
+    await newUser.save();
+    res.status(200).send("ข้อมูลผู้ใช้งานได้ถูกสร้างขึ้นเรียบร้อยแล้ว");
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const login = async (req, res, next) => {
+  try {
+    const user = await User.findOne({ username: req.body.username });
+    if (!user) return next(createError(404, "ไม่พบผุ้ใช้งานนี่"));
+
+    const isPasswordCorrect = await bcrypt.compare(
+      req.body.password,
+      user.password
+    );
+    if (!isPasswordCorrect) return next(createError(404, "รหัสผ่านไม่ถูกต้อง"));
+
+    //สร้าง key จาก openssl
+    const token = jwt.sign({ id: user._id, isAdmin: user.isAdmin }, process.env.JWT);
+
+    const { password, isAdmin, ...otherDetails } = user._doc;
+
+    //เก็บค่า cookie
+    res.cookie("access_token", token, {
+      httpOnly: true,
+    }).status(200).json({ otherDetails });
+  } catch (err) {
+    next(err);
+  }
+};
